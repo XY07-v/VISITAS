@@ -1,6 +1,8 @@
 import os
+import json
 from flask import Flask, render_template_string, request
 from pymongo import MongoClient
+from bson import json_util
 
 app = Flask(__name__)
 
@@ -10,109 +12,86 @@ client = MongoClient(MONGO_URI)
 db = client['NestleDB']
 visitas_col = db['visitas']
 
-# --- PLANTILLA HTML OPTIMIZADA ---
+# --- PLANTILLA HTML (INTERACTIVA) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NestleDB - Reporte Completo</title>
+    <title>NestleDB - Detalle Expandido</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: #f0f2f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .main-container { padding: 15px; max-width: 1400px; margin: auto; }
-        .table-card { 
-            background: white; 
-            border-radius: 12px; 
-            box-shadow: 0 8px 30px rgba(0,0,0,0.1); 
-            overflow: hidden;
-            margin-top: 20px;
-        }
+        body { background: #f8f9fa; font-family: 'Segoe UI', sans-serif; }
+        .main-container { padding: 10px; max-width: 1000px; margin: auto; }
+        .table-card { background: white; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; }
         
-        /* Imágenes */
-        .img-preview { 
-            width: 80px; height: 80px; object-fit: cover; 
-            border-radius: 8px; cursor: pointer; border: 1px solid #dee2e6;
-            transition: transform 0.2s;
+        /* Botones de PV y BMB */
+        .btn-detail { 
+            background: none; border: none; color: #0d6efd; 
+            text-decoration: underline; font-weight: bold; padding: 0;
+            text-align: left;
         }
-        .img-preview:hover { transform: scale(1.05); }
+        .btn-detail:hover { color: #0a58ca; }
+
+        /* Estilos del Modal de Detalles */
+        .detail-item { border-bottom: 1px solid #eee; padding: 8px 0; }
+        .detail-label { font-weight: bold; color: #555; font-size: 0.85rem; text-transform: uppercase; }
+        .detail-value { color: #000; word-break: break-all; }
         
-        /* Celdas con datos completos */
-        .table td, .table th { 
-            vertical-align: middle; 
-            white-space: normal; /* Asegura que el texto no se corte y baje al siguiente renglón */
-            word-wrap: break-word;
-            min-width: 100px;
-        }
-
-        /* Modales */
-        .modal-content { border-radius: 15px; overflow: hidden; }
-        #modalImg { width: 100%; height: auto; }
-        iframe { width: 100%; height: 75vh; border: 0; }
-
-        .search-box { border-radius: 25px; padding-left: 20px; border: 2px solid #0d6efd; }
-        .btn-custom { border-radius: 25px; padding: 10px 25px; }
+        .img-full { width: 100%; border-radius: 10px; margin-top: 10px; border: 1px solid #ddd; }
+        iframe { width: 100%; height: 350px; border: 0; border-radius: 10px; }
+        
+        .search-bar { border-radius: 20px; border: 2px solid #dee2e6; transition: 0.3s; }
+        .search-bar:focus { border-color: #0d6efd; box-shadow: none; }
     </style>
 </head>
 <body>
     <div class="main-container">
-        <div class="text-center mb-4">
-            <h2 class="fw-bold text-primary">📊 Panel de Visitas Nestle</h2>
+        <div class="text-center py-3">
+            <h4 class="fw-bold">📱 NestleDB - Visitas</h4>
         </div>
-        
-        <div class="card border-0 shadow-sm p-4 mb-4" style="border-radius: 15px;">
-            <form method="GET" class="row g-3 justify-content-center">
-                <div class="col-md-3">
-                    <label class="form-label small fw-bold">Fecha (AAAA-MM-DD):</label>
-                    <input type="text" name="fecha" class="form-control search-box" placeholder="Ej: 2026-03-31" value="{{ f_val }}">
+
+        <div class="card border-0 shadow-sm p-3 mb-3" style="border-radius: 15px;">
+            <form method="GET" class="row g-2">
+                <div class="col-12">
+                    <input type="text" name="busqueda" class="form-control search-bar" 
+                           placeholder="Buscar por PV, BMB o Usuario..." value="{{ b_val }}">
                 </div>
-                <div class="col-md-5">
-                    <label class="form-label small fw-bold">Buscar (PV, BMB o Usuario):</label>
-                    <input type="text" name="busqueda" class="form-control search-box" placeholder="Escriba PV, nombre de BMB o Usuario..." value="{{ b_val }}">
+                <div class="col-6">
+                    <button type="submit" class="btn btn-primary w-100 rounded-pill">🔍 Buscar</button>
                 </div>
-                <div class="col-md-auto d-flex align-items-end gap-2">
-                    <button type="submit" class="btn btn-primary btn-custom shadow">🔍 Buscar</button>
-                    <a href="/" class="btn btn-outline-secondary btn-custom">🔄 Limpiar</a>
+                <div class="col-6">
+                    <a href="/" class="btn btn-light w-100 rounded-pill border">🔄 Limpiar</a>
                 </div>
             </form>
         </div>
 
         <div class="table-card">
             <div class="table-responsive">
-                <table class="table table-striped table-hover mb-0">
-                    <thead class="table-primary text-uppercase small">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-dark">
                         <tr>
                             <th>Fecha</th>
-                            <th>Usuario</th>
-                            <th>PV</th>
-                            <th>BMB (Datos)</th>
-                            <th>Foto BMB</th>
-                            <th>Foto Fachada</th>
+                            <th>PV / BMB (Ver Detalle)</th>
                             <th>GPS</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for v in visitas %}
                         <tr>
-                            <td class="fw-bold text-nowrap">{{ v.fecha_limpia }}</td>
-                            <td>{{ v.usuario }}</td>
-                            <td><span class="badge bg-light text-dark border">{{ v.pv }}</span></td>
-                            <td>{{ v.bmb }}</td>
+                            <td class="small fw-bold text-nowrap">{{ v.fecha_limpia }}</td>
                             <td>
-                                {% if v.f_bmb %}
-                                    <img src="{{ v.f_bmb }}" class="img-preview shadow-sm" data-bs-toggle="modal" data-bs-target="#imgModal" onclick="showImg('{{ v.f_bmb }}')">
-                                {% else %} <span class="text-muted small italic">Sin foto</span> {% endif %}
-                            </td>
-                            <td>
-                                {% if v.f_fachada %}
-                                    <img src="{{ v.f_fachada }}" class="img-preview shadow-sm" data-bs-toggle="modal" data-bs-target="#imgModal" onclick="showImg('{{ v.f_fachada }}')">
-                                {% else %} <span class="text-muted small italic">Sin foto</span> {% endif %}
+                                <button class="btn-detail" onclick='verDetalles({{ v.json_data | safe }})'>
+                                    PV: {{ v.pv }} <br>
+                                    <span class="text-muted small">BMB: {{ v.bmb }}</span>
+                                </button>
                             </td>
                             <td>
                                 {% if v.gps %}
-                                    <button class="btn btn-sm btn-danger rounded-pill px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#mapModal" onclick="showMap('{{ v.gps }}')">📍 Mapa</button>
-                                {% else %} <span class="text-muted">---</span> {% endif %}
+                                    <button class="btn btn-sm btn-danger rounded-circle" 
+                                            onclick="verMapa('{{ v.gps }}')">📍</button>
+                                {% else %} --- {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -122,23 +101,39 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
-    <div class="modal fade" id="imgModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content">
-                <div class="modal-body p-1 text-center bg-dark">
-                    <img id="modalImg" src="">
-                    <button type="button" class="btn btn-light mt-2 mb-2" data-bs-dismiss="modal">Cerrar</button>
+    <div class="modal fade" id="detallesModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+            <div class="modal-content" style="border-radius: 20px;">
+                <div class="modal-header bg-primary text-white">
+                    <h6 class="modal-title fw-bold">Detalles Completos del Registro</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="contenidoDetalles">
+                        </div>
+                    
+                    <hr>
+                    <div class="row">
+                        <div class="col-6">
+                            <p class="fw-bold small mb-1">FOTO BMB:</p>
+                            <div id="fotoBMB"></div>
+                        </div>
+                        <div class="col-6">
+                            <p class="fw-bold small mb-1">FOTO FACHADA:</p>
+                            <div id="fotoFachada"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="modal fade" id="mapModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-fullscreen-md-down modal-lg modal-dialog-centered">
+        <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header bg-danger text-white">
-                    <h6 class="modal-title fw-bold">📍 Ubicación del Punto</h6>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                <div class="modal-header">
+                    <h6 class="modal-title">📍 Ubicación Exacta</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-0">
                     <iframe id="mapFrame" src=""></iframe>
@@ -149,12 +144,35 @@ HTML_TEMPLATE = """
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function showImg(url) {
-            document.getElementById('modalImg').src = url;
+        const mDetalles = new bootstrap.Modal(document.getElementById('detallesModal'));
+        const mMapa = new bootstrap.Modal(document.getElementById('mapModal'));
+
+        function verDetalles(data) {
+            let html = "";
+            // Recorremos todas las llaves del registro para no dejar nada por fuera
+            for (let key in data) {
+                if (!key.startsWith('f_') && key !== '_id' && key !== 'json_data' && key !== 'fecha_limpia') {
+                    html += `
+                        <div class="detail-item">
+                            <div class="detail-label">${key}</div>
+                            <div class="detail-value">${data[key] || '---'}</div>
+                        </div>
+                    `;
+                }
+            }
+            document.getElementById('contenidoDetalles').innerHTML = html;
+            
+            // Mostrar fotos si existen
+            document.getElementById('fotoBMB').innerHTML = data.f_bmb ? `<img src="${data.f_bmb}" class="img-full">` : '<small>No disponible</small>';
+            document.getElementById('fotoFachada').innerHTML = data.f_fachada ? `<img src="${data.f_fachada}" class="img-full">` : '<small>No disponible</small>';
+            
+            mDetalles.show();
         }
-        function showMap(coords) {
-            const url = `https://maps.google.com/maps?q=${coords}&t=&z=15&ie=UTF8&iwloc=&output=embed`;
+
+        function verMapa(coords) {
+            const url = `https://maps.google.com/maps?q=${coords}&t=&z=16&ie=UTF8&iwloc=&output=embed`;
             document.getElementById('mapFrame').src = url;
+            mMapa.show();
         }
     </script>
 </body>
@@ -163,35 +181,32 @@ HTML_TEMPLATE = """
 
 @app.route('/')
 def index():
-    f_val = request.args.get('fecha', '')
     b_val = request.args.get('busqueda', '')
 
-    # Construcción del Filtro
     query = {}
-    
-    # Filtro de fecha exacto o parcial
-    if f_val:
-        query['fecha'] = {"$regex": f_val}
-    
-    # Filtro global para PV, BMB y Usuario
     if b_val:
         query["$or"] = [
             {"pv": {"$regex": b_val, "$options": "i"}},
             {"bmb": {"$regex": b_val, "$options": "i"}},
-            {"usuario": {"$regex": b_val, "$options": "i"}}
+            {"usuario": {"$regex": b_val, "$options": "i"}},
+            {"fecha": {"$regex": b_val}}
         ]
 
     try:
         raw_datos = list(visitas_col.find(query).sort("fecha", -1))
         
-        # Procesamiento de fecha limpia (AAAA-MM-DD)
         for item in raw_datos:
+            # Limpiar fecha
             f = str(item.get('fecha', ''))
             item['fecha_limpia'] = f[:10] if len(f) >= 10 else f
+            
+            # Convertir todo el registro a JSON para que JS lo lea al hacer click
+            # Esto permite ver CUALQUIER columna nueva sin cambiar el código
+            item['json_data'] = json_util.dumps(item)
 
-        return render_template_string(HTML_TEMPLATE, visitas=raw_datos, f_val=f_val, b_val=b_val)
+        return render_template_string(HTML_TEMPLATE, visitas=raw_datos, b_val=b_val)
     except Exception as e:
-        return f"Error de conexión: {e}"
+        return f"Error: {e}"
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
