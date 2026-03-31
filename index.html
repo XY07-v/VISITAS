@@ -4,101 +4,81 @@ from pymongo import MongoClient
 
 app = Flask(__name__)
 
-# --- CONFIGURACIÓN DE MONGO ---
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb+srv://ANDRES_VANEGAS:CF32fUhOhrj70dY5@cluster0.dtureen.mongodb.net/?appName=Cluster0")
+# --- CONEXIÓN ---
+MONGO_URI = "mongodb+srv://ANDRES_VANEGAS:CF32fUhOhrj70dY5@cluster0.dtureen.mongodb.net/?appName=Cluster0"
 client = MongoClient(MONGO_URI)
 db = client['NestleDB']
 visitas_col = db['visitas']
 
-# --- PLANTILLA HTML (Diseño Moderno) ---
+# --- HTML INTEGRADO ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control de Visitas - Nestle</title>
+    <title>Panel NestleDB</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .img-card { width: 80px; height: 80px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd; transition: 0.3s; }
-        .img-card:hover { transform: scale(1.1); }
-        .table-container { background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .badge-pos { background-color: #d1e7dd; color: #0f5132; }
-        .badge-neg { background-color: #f8d7da; color: #842029; }
+        body { background: #f4f7f6; padding: 20px; }
+        .img-visit { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd; }
+        .card-table { background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 20px; }
     </style>
 </head>
-<body class="bg-light">
-    <nav class="navbar navbar-dark bg-primary shadow mb-4">
-        <div class="container">
-            <span class="navbar-brand fw-bold">🚀 Panel de Control NestleDB</span>
-        </div>
-    </nav>
-
-    <div class="container-fluid px-4">
-        <div class="row mb-4">
-            <div class="col-md-6 offset-md-3">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-body">
-                        <form method="GET" class="d-flex gap-2">
-                            <input type="text" name="fecha" class="form-control" placeholder="Buscar fecha (ej: 2026-03-26)" value="{{ fecha_query }}">
-                            <button type="submit" class="btn btn-primary px-4">Consultar</button>
-                            <a href="/" class="btn btn-outline-secondary">🔄</a>
-                        </form>
-                    </div>
+<body>
+    <div class="container-fluid">
+        <h2 class="text-center mb-4">🚀 Panel de Control NestleDB</h2>
+        
+        <div class="card-table">
+            <form method="GET" class="row g-3 mb-4">
+                <div class="col-auto">
+                    <input type="text" name="fecha" class="form-control" placeholder="Filtrar por fecha" value="{{ fecha_query }}">
                 </div>
-            </div>
-        </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary">Consultar</button>
+                </div>
+                <div class="col-auto">
+                    <a href="/" class="btn btn-outline-secondary">Limpiar</a>
+                </div>
+            </form>
 
-        <div class="table-container">
-            <table class="table table-hover align-middle mb-0">
+            <table class="table table-hover align-middle">
                 <thead class="table-dark">
                     <tr>
                         <th>Fecha</th>
                         <th>Mes</th>
                         <th>Estado</th>
-                        <th>BMB (Foto)</th>
-                        <th>Fachada (Foto)</th>
-                        <th>Ubicación</th>
+                        <th>BMB</th>
+                        <th>Fachada</th>
+                        <th>Mapa</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for v in visitas %}
                     <tr>
-                        <td class="fw-bold text-primary">{{ v.fecha }}</td>
+                        <td><strong>{{ v.fecha }}</strong></td>
                         <td>{{ v.MES }}</td>
                         <td>
                             {% if v.estado == -1 or v.VALOR == -1 %}
-                                <span class="badge badge-pos p-2 rounded">✅ Positivo</span>
+                                <span class="badge bg-success">✅ Positivo</span>
                             {% else %}
-                                <span class="badge badge-neg p-2 rounded">❌ Déficit</span>
+                                <span class="badge bg-danger">❌ Déficit</span>
                             {% endif %}
                         </td>
                         <td>
                             {% if v.f_bmb %}
-                                <a href="{{ v.f_bmb }}" target="_blank">
-                                    <img src="{{ v.f_bmb }}" class="img-card" alt="BMB">
-                                </a>
-                            {% else %} <span class="text-muted small">Sin foto</span> {% endif %}
+                                <a href="{{ v.f_bmb }}" target="_blank"><img src="{{ v.f_bmb }}" class="img-visit"></a>
+                            {% else %} <small>N/A</small> {% endif %}
                         </td>
                         <td>
                             {% if v.f_fachada %}
-                                <a href="{{ v.f_fachada }}" target="_blank">
-                                    <img src="{{ v.f_fachada }}" class="img-card" alt="Fachada">
-                                </a>
-                            {% else %} <span class="text-muted small">Sin foto</span> {% endif %}
+                                <a href="{{ v.f_fachada }}" target="_blank"><img src="{{ v.f_fachada }}" class="img-visit"></a>
+                            {% else %} <small>N/A</small> {% endif %}
                         </td>
                         <td>
                             {% if v.gps %}
-                                <a href="https://www.google.com/maps/search/?api=1&query={{ v.gps }}" 
-                                   target="_blank" class="btn btn-sm btn-info text-white">
-                                    📍 Ver Mapa
-                                </a>
-                            {% else %} <span class="text-muted small">Sin GPS</span> {% endif %}
+                                <a href="https://www.google.com/maps/search/?api=1&query={{ v.gps }}" target="_blank" class="btn btn-sm btn-info text-white">📍 Ver</a>
+                            {% else %} <small>N/A</small> {% endif %}
                         </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="6" class="text-center py-4 text-muted">No se encontraron registros para esta fecha.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -112,17 +92,12 @@ HTML_TEMPLATE = """
 @app.route('/')
 def index():
     fecha_query = request.args.get('fecha', '')
-    
-    # Filtro dinámico: Si hay fecha, busca exacto. Si no, trae los últimos 50.
     query = {"fecha": fecha_query} if fecha_query else {}
-    
     try:
-        # Ordenamos por fecha descendente para ver lo más nuevo primero
         datos = list(visitas_col.find(query).sort("fecha", -1).limit(50))
         return render_template_string(HTML_TEMPLATE, visitas=datos, fecha_query=fecha_query)
     except Exception as e:
-        return f"<h3>Error de conexión:</h3><p>{e}</p>"
+        return f"Error: {e}"
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(debug=True, port=5000)
