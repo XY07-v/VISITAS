@@ -1,73 +1,108 @@
 import os
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request
 from pymongo import MongoClient
 
 app = Flask(__name__)
 
 # --- CONFIGURACIÓN DE MONGO ---
-# Intenta obtener la URI de Render, si no, usa la que proporcionaste
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb+srv://ANDRES_VANEGAS:CF32fUhOhrj70dY5@cluster0.dtureen.mongodb.net/?appName=Cluster0")
 client = MongoClient(MONGO_URI)
 db = client['NestleDB']
 visitas_col = db['visitas']
 
-# --- PLANTILLA HTML (Integrada) ---
+# --- PLANTILLA HTML (Diseño Moderno) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Visitas - NestleDB</title>
+    <title>Control de Visitas - Nestle</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #f8f9fa; }
-        .status-check { color: #198754; font-weight: bold; }
-        .status-x { color: #dc3545; font-weight: bold; }
+        .img-card { width: 80px; height: 80px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd; transition: 0.3s; }
+        .img-card:hover { transform: scale(1.1); }
+        .table-container { background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .badge-pos { background-color: #d1e7dd; color: #0f5132; }
+        .badge-neg { background-color: #f8d7da; color: #842029; }
     </style>
 </head>
-<body>
-    <nav class="navbar navbar-dark bg-primary mb-4">
+<body class="bg-light">
+    <nav class="navbar navbar-dark bg-primary shadow mb-4">
         <div class="container">
-            <span class="navbar-brand mb-0 h1">NestleDB - Visualizador</span>
+            <span class="navbar-brand fw-bold">🚀 Panel de Control NestleDB</span>
         </div>
     </nav>
 
-    <div class="container">
-        <div class="card shadow">
-            <div class="card-header bg-white">
-                <h5 class="mb-0">Registros en Colección: Visitas</h5>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Mes</th>
-                                <th>Estado</th>
-                                <th>ID Documento</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for visita in visitas %}
-                            <tr>
-                                <td>{{ visita.MES }}</td>
-                                <td>
-                                    {% if visita.estado == -1 or visita.VALOR == -1 %}
-                                        <span class="status-check">✔ (Positivo)</span>
-                                    {% elif not visita.estado or visita.estado == "" %}
-                                        <span class="status-x">✘ (Déficit)</span>
-                                    {% else %}
-                                        {{ visita.estado }}
-                                    {% endif %}
-                                </td>
-                                <td class="text-muted small">{{ visita._id }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+    <div class="container-fluid px-4">
+        <div class="row mb-4">
+            <div class="col-md-6 offset-md-3">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <form method="GET" class="d-flex gap-2">
+                            <input type="text" name="fecha" class="form-control" placeholder="Buscar fecha (ej: 2026-03-26)" value="{{ fecha_query }}">
+                            <button type="submit" class="btn btn-primary px-4">Consultar</button>
+                            <a href="/" class="btn btn-outline-secondary">🔄</a>
+                        </form>
+                    </div>
                 </div>
             </div>
+        </div>
+
+        <div class="table-container">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Mes</th>
+                        <th>Estado</th>
+                        <th>BMB (Foto)</th>
+                        <th>Fachada (Foto)</th>
+                        <th>Ubicación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in visitas %}
+                    <tr>
+                        <td class="fw-bold text-primary">{{ v.fecha }}</td>
+                        <td>{{ v.MES }}</td>
+                        <td>
+                            {% if v.estado == -1 or v.VALOR == -1 %}
+                                <span class="badge badge-pos p-2 rounded">✅ Positivo</span>
+                            {% else %}
+                                <span class="badge badge-neg p-2 rounded">❌ Déficit</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if v.f_bmb %}
+                                <a href="{{ v.f_bmb }}" target="_blank">
+                                    <img src="{{ v.f_bmb }}" class="img-card" alt="BMB">
+                                </a>
+                            {% else %} <span class="text-muted small">Sin foto</span> {% endif %}
+                        </td>
+                        <td>
+                            {% if v.f_fachada %}
+                                <a href="{{ v.f_fachada }}" target="_blank">
+                                    <img src="{{ v.f_fachada }}" class="img-card" alt="Fachada">
+                                </a>
+                            {% else %} <span class="text-muted small">Sin foto</span> {% endif %}
+                        </td>
+                        <td>
+                            {% if v.gps %}
+                                <a href="https://www.google.com/maps/search/?api=1&query={{ v.gps }}" 
+                                   target="_blank" class="btn btn-sm btn-info text-white">
+                                    📍 Ver Mapa
+                                </a>
+                            {% else %} <span class="text-muted small">Sin GPS</span> {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4 text-muted">No se encontraron registros para esta fecha.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </body>
@@ -76,14 +111,18 @@ HTML_TEMPLATE = """
 
 @app.route('/')
 def index():
-    # Buscamos los datos en MongoDB
+    fecha_query = request.args.get('fecha', '')
+    
+    # Filtro dinámico: Si hay fecha, busca exacto. Si no, trae los últimos 50.
+    query = {"fecha": fecha_query} if fecha_query else {}
+    
     try:
-        datos = list(visitas_col.find().limit(100)) # Limitamos a 100 para velocidad
-        return render_template_string(HTML_TEMPLATE, visitas=datos)
+        # Ordenamos por fecha descendente para ver lo más nuevo primero
+        datos = list(visitas_col.find(query).sort("fecha", -1).limit(50))
+        return render_template_string(HTML_TEMPLATE, visitas=datos, fecha_query=fecha_query)
     except Exception as e:
-        return f"Error conectando a MongoDB: {e}"
+        return f"<h3>Error de conexión:</h3><p>{e}</p>"
 
 if __name__ == '__main__':
-    # Render usa la variable de entorno PORT
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
